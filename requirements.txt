@@ -1,0 +1,8 @@
+jupyter
+jupyterlab
+notebook
+scipy
+numpy
+matplotlib
+seaborn
+pandas
