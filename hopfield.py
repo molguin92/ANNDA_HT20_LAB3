@@ -1,10 +1,15 @@
+import itertools
 import warnings
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 from numpy.random import default_rng
 
 rand_gen = default_rng()
+
+
+class ConvergenceWarning(Warning):
+    pass
 
 
 class HopfieldNetwork:
@@ -40,55 +45,86 @@ class HopfieldNetwork:
             if convergence_count >= convergence_threshold:
                 break
 
+    def _synchronous_recall(self, y: np.ndarray) -> np.ndarray:
+        new_y = np.dot(self._w, y)
+        new_y[new_y >= 0] = 1  # x >= 0 -> 1
+        new_y[new_y < 0] = -1  # x < 0 -> -1
+        return new_y
+
+    def _asynchronous_recall(self, y: np.ndarray) -> np.ndarray:
+        new_y = y.copy()
+        indices = rand_gen.permutation(new_y.size)
+
+        for i in indices:
+            # iteratively calculate new updates
+            new_i = np.sum(np.multiply(self._w[i, :], new_y))
+            new_y[i] = -1 if new_i < 0 else 1
+
+        return new_y
+
     def recall(self, X: np.ndarray,
-               synchronous: bool = True,
+               mode: Literal['asynchronous', 'synchronous'] = 'asynchronous',
                convergence_threshold: int = 5,
                max_iter: Optional[int] = None) -> np.ndarray:
-
-        Y = np.empty(shape=X.shape)
 
         max_iter = 10 * np.log(self._w.shape[0]) \
             if max_iter is None else max_iter
 
-        if synchronous:
-            # converge per pattern, not the whole matrix
-            for i, pattern in enumerate(X):
-                new_y = pattern.copy()
-                convergence_count = 0
-                iterations = 0
-
-                while True:
-                    prev_y = new_y.copy()
-                    new_y = np.dot(self._w, prev_y)
-                    new_y[new_y >= 0] = 1  # x >= 0 -> 1
-                    new_y[new_y < 0] = -1  # x < 0 -> -1
-
-                    convergence_count = convergence_count + 1 \
-                        if np.all(np.isclose(new_y, prev_y)) else 0
-
-                    iterations += 1
-
-                    if convergence_count >= convergence_threshold:
-                        break
-                    elif iterations >= max_iter:
-                        warnings.warn(f'Pattern {i} did not converge after '
-                                      f'the maximum number of iterations ('
-                                      f'{int(np.floor(max_iter)):d})!',
-                                      Warning)
-                        break
-
-                Y[i, :] = new_y
-
-            return Y
+        if mode == 'asynchronous':
+            recall_fn = self._asynchronous_recall
+        elif mode == 'synchronous':
+            recall_fn = self._synchronous_recall
         else:
-            raise RuntimeError('Not implemented yet.')
+            raise RuntimeError(f'Invalid mode: {mode}!')
+
+        Y = np.empty(shape=X.shape)
+
+        for i, pattern in enumerate(X):
+            new_y = pattern.copy()
+            convergence_count = 0
+            iterations = 0
+
+            while True:
+                prev_y = new_y.copy()
+                new_y = recall_fn(prev_y)
+
+                convergence_count = convergence_count + 1 \
+                    if np.all(np.isclose(new_y, prev_y)) else 0
+
+                iterations += 1
+
+                if convergence_count >= convergence_threshold:
+                    break
+                elif iterations >= max_iter:
+                    warnings.warn(f'Pattern did not converge after '
+                                  f'the maximum number of iterations ('
+                                  f'{int(np.floor(max_iter)):d})!',
+                                  ConvergenceWarning)
+                    break
+
+            Y[i, :] = new_y
+
+        return Y
 
 
 if __name__ == '__main__':
+    # note that x3 is not orthogonal with respect to either x1 or x2,
+    # and thus causes crosstalk in the network!
+    # that's why we can't get perfect recall if we train the network with all
+    # three vectors
+    # if we ignore x3, x1d and x2d converge to x1 and x2.
+
     x1 = [-1, -1, 1, -1, 1, -1, -1, 1]
     x2 = [-1, -1, -1, -1, -1, 1, -1, -1]
     x3 = [-1, 1, 1, -1, -1, 1, -1, 1]
+
     X = np.array([x1, x2, x3])
+
+    for (i, x), (j, y) in itertools.product(enumerate(X), enumerate(X)):
+        if i == j:
+            continue
+        elif not np.isclose(np.dot(x, y), 0):
+            print(f'x{i + 1} and x{j + 1} are not orthogonal!')
 
     # make sure the patterns are fixed points
     nn = HopfieldNetwork()
