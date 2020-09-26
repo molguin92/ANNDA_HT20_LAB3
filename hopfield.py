@@ -13,11 +13,31 @@ class ConvergenceWarning(Warning):
 
 
 class HopfieldNetwork:
+    """
+    Implementation of a Hpofield recurrent neural network.
+    """
+
     def __init__(self):
         super(HopfieldNetwork, self).__init__()
         self._w = np.empty(0)
 
     def train(self, X: np.ndarray, convergence_threshold: int = 5) -> None:
+        """
+        Trains the network on a set of input patters.
+
+        Input patterns should be provided as a matrix X of dimensions MxN,
+        where M corresponds to the number of patterns to learn and N to the
+        number of attributes per pattern.
+
+        This method automatically sets up the number of nodes in this network to
+        match the dimensions of the input patterns.
+
+        :param X: A matrix of patterns to learn.
+        :param convergence_threshold: Number of iterations the weight matrix
+        needs to be constant for this method to consider it to have converged.
+        :return:
+        """
+
         # X has dims samples x attrs
         # iterate until convergence
 
@@ -62,10 +82,25 @@ class HopfieldNetwork:
 
         return new_y
 
-    def recall(self, X: np.ndarray,
+    def recall(self, Xd: np.ndarray,
                mode: Literal['asynchronous', 'synchronous'] = 'asynchronous',
                convergence_threshold: int = 5,
                max_iter: Optional[int] = None) -> np.ndarray:
+        """
+        Tries to update a set of given input patterns to match the stored 
+        patterns in this network.
+        
+        :param Xd: Matrix of input patterns to use as inputs to the recall.
+        :param mode: 'asynchronous' or 'synchronous'. Asynchronous recall
+        updates every unit in the patters one at the time, synchronous recall
+        updates the whole pattern at once.
+        :param convergence_threshold: Number of iterations the output pattern
+        needs to be constant for this method to consider it to have converged.
+        :param max_iter: Maximum iterations before this method gives up on
+        finding a convergence.
+        :return: A matrix of the same dimensions as the input matrix
+        containing the recalled patterns.
+        """
 
         max_iter = 10 * np.log(self._w.shape[0]) \
             if max_iter is None else max_iter
@@ -77,9 +112,9 @@ class HopfieldNetwork:
         else:
             raise RuntimeError(f'Invalid mode: {mode}!')
 
-        Y = np.empty(shape=X.shape)
+        Y = np.empty(shape=Xd.shape)
 
-        for i, pattern in enumerate(X):
+        for i, pattern in enumerate(Xd):
             new_y = pattern.copy()
             convergence_count = 0
             iterations = 0
