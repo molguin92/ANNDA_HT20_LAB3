@@ -175,7 +175,7 @@ class HopfieldNetwork:
         energy = 0
         for i in range(I):
             for j in range(J):
-                energy += self._w[i, j]*x[i]*x[j]
+                energy += - self._w[i, j]*x[i]*x[j]
         return energy
 
 
