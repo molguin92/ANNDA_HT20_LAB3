@@ -1,4 +1,3 @@
-import functools
 import itertools
 import warnings
 from typing import Any, Callable, Literal, Optional
@@ -15,14 +14,16 @@ class ConvergenceWarning(Warning):
 
 class HopfieldNetwork:
     """
-    Implementation of a Hpofield recurrent neural network.
+    Implementation of a Hopfield recurrent neural network.
     """
 
     def __init__(self):
         super(HopfieldNetwork, self).__init__()
         self._w = np.empty(0)
 
-    def train(self, X: np.ndarray, convergence_threshold: int = 5) -> None:
+    def train(self, X: np.ndarray,
+              self_connections: bool = False,
+              convergence_threshold: int = 5) -> None:
         """
         Trains the network on a set of input patters.
 
@@ -34,6 +35,9 @@ class HopfieldNetwork:
         match the dimensions of the input patterns.
 
         :param X: A matrix of patterns to learn.
+        :param self_connections: Allow self connections in the weight matrix
+        (i.e. if false, this will mean that the weight matrix will have a
+        fully-zeroed diagonal).
         :param convergence_threshold: Number of iterations the weight matrix
         needs to be constant for this method to consider it to have converged.
         :return:
@@ -56,7 +60,8 @@ class HopfieldNetwork:
                 # np.fill_diagonal(w, 0)
                 self._w += w
 
-            np.fill_diagonal(self._w, 0)
+            if not self_connections:
+                np.fill_diagonal(self._w, 0)
             self._w /= attr_dims
             epochs += 1
 
@@ -66,14 +71,20 @@ class HopfieldNetwork:
             if convergence_count >= convergence_threshold:
                 break
 
-    def _synchronous_recall(self, y: np.ndarray) -> np.ndarray:
+    def _synchronous_recall(self,
+                            y: np.ndarray,
+                            callback: Callable[[int, np.ndarray], Any]) \
+            -> np.ndarray:
         new_y = np.dot(self._w, y)
         new_y[new_y >= 0] = 1  # x >= 0 -> 1
         new_y[new_y < 0] = -1  # x < 0 -> -1
+        callback(-1, new_y)
         return new_y
 
     def _asynchronous_recall(self, y: np.ndarray,
-                             random_units: bool) -> np.ndarray:
+                             random_units: bool,
+                             callback: Callable[[int, np.ndarray], Any]) \
+            -> np.ndarray:
         new_y = y.copy()
         indices = rand_gen.permutation(new_y.size) \
             if random_units else np.arange(new_y.size)
@@ -82,6 +93,7 @@ class HopfieldNetwork:
             # iteratively calculate new updates
             new_i = np.sum(np.multiply(self._w[i, :], new_y))
             new_y[i] = -1 if new_i < 0 else 1
+            callback(i, new_y)
 
         return new_y
 
@@ -90,9 +102,8 @@ class HopfieldNetwork:
                random_units: bool = False,
                convergence_threshold: int = 5,
                max_iter: Optional[int] = None,
-               callback: Callable[[int, int, np.ndarray], Any] =
-               lambda epoch, p_index, pattern: None,
-               callback_interval: int = 100) -> np.ndarray:
+               callback: Callable[[int, int, int, np.ndarray], Any] =
+               lambda epoch, p_index, unit, pattern: None) -> np.ndarray:
         """
         Tries to update a set of given input patterns to match the stored
         patterns in this network.
@@ -107,14 +118,15 @@ class HopfieldNetwork:
         needs to be constant for this method to consider it to have converged.
         :param max_iter: Maximum iterations before this method gives up on
         finding a convergence.
-        :param callback: A function to be executed a certain intervals in the
-        recall procedure. This function should take three parameters: an int
-        representing the current iteration, an int representing the index of
-        the current pattern, and a np.ndarray containing the current state of
-        the pattern. This function will be executed for each pattern in the
-        input separately.
-        :param callback_interval: Interval in iterations between calls to the
-        callback function.
+        :param callback: A function to be executed periodically during the
+        recall procedure. This function should take four parameters: an int
+        representing the current epoch, an int representing the index of the 
+        current pattern, an int corresponding  to the last updated unit (will 
+        always be -1 in synchronous mode), and a np.ndarray containing the 
+        current state of the pattern. This function will be executed for each 
+        pattern in the input separately. Note that this function will be 
+        called at different intervals for synchronous and synchronous modes; 
+        for asynchronous operation, it will be called after every unit is 
         :return: A matrix of the same dimensions as the input matrix
         containing the recalled patterns.
         """
@@ -123,10 +135,11 @@ class HopfieldNetwork:
             if max_iter is None else max_iter
 
         if mode == 'asynchronous':
-            recall_fn = functools.partial(self._asynchronous_recall,
-                                          random_units=random_units)
+            def recall_fn(pattern, cb):
+                return self._asynchronous_recall(pattern, random_units, cb)
         elif mode == 'synchronous':
-            recall_fn = self._synchronous_recall
+            def recall_fn(pattern, cb):
+                return self._synchronous_recall(pattern, cb)
         else:
             raise RuntimeError(f'Invalid mode: {mode}!')
 
@@ -136,18 +149,17 @@ class HopfieldNetwork:
             new_y = pattern.copy()
             convergence_count = 0
             iterations = 0
-
             while True:
-                if iterations % callback_interval == 0:
-                    callback(iterations, i, new_y)
+
+                def epoch_cb(unit, pat):
+                    return callback(iterations + 1, i, unit, pat)
 
                 prev_y = new_y.copy()
-                new_y = recall_fn(prev_y)
-
-                convergence_count = convergence_count + 1 \
-                    if np.all(np.isclose(new_y, prev_y)) else 0
+                new_y = recall_fn(prev_y, epoch_cb)
 
                 iterations += 1
+                convergence_count = convergence_count + 1 \
+                    if np.all(np.isclose(new_y, prev_y)) else 0
 
                 if convergence_count >= convergence_threshold:
                     break
@@ -162,11 +174,11 @@ class HopfieldNetwork:
 
         return Y
 
-    def _energy(self, x: np.ndarray) -> np.ndarray:
+    def _energy(self, x: np.ndarray) -> float:
         """
-        Calculates the energy for a given state or patern.
+        Calculates the energy for a given state or pattern.
 
-        :param x: Input patern or state of the nerwork for which we want to
+        :param x: Input pattern or state of the network for which we want to
         calculate the energy.
         :return: Value of the energy.
         """
@@ -175,9 +187,8 @@ class HopfieldNetwork:
         energy = 0
         for i in range(I):
             for j in range(J):
-                energy += - self._w[i, j]*x[i]*x[j]
+                energy += - self._w[i, j] * x[i] * x[j]
         return energy
-
 
 
 if __name__ == '__main__':
