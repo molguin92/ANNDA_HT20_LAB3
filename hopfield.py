@@ -94,7 +94,7 @@ class HopfieldNetwork:
                lambda epoch, p_index, pattern: None,
                callback_interval: int = 100) -> np.ndarray:
         """
-        Tries to update a set of given input patterns to match the stored 
+        Tries to update a set of given input patterns to match the stored
         patterns in this network.
 
         :param Xd: Matrix of input patterns to use as inputs to the recall.
@@ -162,6 +162,23 @@ class HopfieldNetwork:
 
         return Y
 
+    def _energy(self, x: np.ndarray) -> np.ndarray:
+        """
+        Calculates the energy for a given state or patern.
+
+        :param x: Input patern or state of the nerwork for which we want to
+        calculate the energy.
+        :return: Value of the energy.
+        """
+        I, J = self._w.shape
+
+        energy = 0
+        for i in range(I):
+            for j in range(J):
+                energy += self._w[i, j]*x[i]*x[j]
+        return energy
+
+
 
 if __name__ == '__main__':
     # note that x3 is not orthogonal with respect to either x1 or x2,
@@ -194,5 +211,7 @@ if __name__ == '__main__':
     Xd = np.array([x1d, x2d, x3d])
 
     Xp = nn.recall(Xd)
+
+    print(nn._energy(x2d))
 
     print(Xp == X)
