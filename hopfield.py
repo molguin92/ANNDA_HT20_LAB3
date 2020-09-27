@@ -1,7 +1,7 @@
 import functools
 import itertools
 import warnings
-from typing import Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 import numpy as np
 from numpy.random import default_rng
@@ -89,11 +89,13 @@ class HopfieldNetwork:
                mode: Literal['asynchronous', 'synchronous'] = 'asynchronous',
                random_units: bool = False,
                convergence_threshold: int = 5,
-               max_iter: Optional[int] = None) -> np.ndarray:
+               max_iter: Optional[int] = None,
+               callback: Callable[[int, np.ndarray], Any] = lambda e, p: None,
+               callback_interval: int = 100) -> np.ndarray:
         """
         Tries to update a set of given input patterns to match the stored 
         patterns in this network.
-        
+
         :param Xd: Matrix of input patterns to use as inputs to the recall.
         :param mode: 'asynchronous' or 'synchronous'. Asynchronous recall
         updates every unit in the patters one at the time, synchronous recall
@@ -104,6 +106,13 @@ class HopfieldNetwork:
         needs to be constant for this method to consider it to have converged.
         :param max_iter: Maximum iterations before this method gives up on
         finding a convergence.
+        :param callback: A function to be executed a certain intervals in the
+        recall procedure. This function should take two parameters: and int
+        representing the current iteration and a np.ndarray containing the
+        current state of the pattern. This function will be executed for each
+        pattern in the input separately.
+        :param callback_interval: Interval in iterations between calls to the
+        callback function.
         :return: A matrix of the same dimensions as the input matrix
         containing the recalled patterns.
         """
@@ -127,6 +136,9 @@ class HopfieldNetwork:
             iterations = 0
 
             while True:
+                if iterations % callback_interval == 0:
+                    callback(iterations, new_y)
+
                 prev_y = new_y.copy()
                 new_y = recall_fn(prev_y)
 
