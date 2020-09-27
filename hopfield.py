@@ -1,6 +1,7 @@
+import functools
 import itertools
 import warnings
-from typing import Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 import numpy as np
 from numpy.random import default_rng
@@ -71,9 +72,11 @@ class HopfieldNetwork:
         new_y[new_y < 0] = -1  # x < 0 -> -1
         return new_y
 
-    def _asynchronous_recall(self, y: np.ndarray) -> np.ndarray:
+    def _asynchronous_recall(self, y: np.ndarray,
+                             random_units: bool) -> np.ndarray:
         new_y = y.copy()
-        indices = rand_gen.permutation(new_y.size)
+        indices = rand_gen.permutation(new_y.size) \
+            if random_units else np.arange(new_y.size)
 
         for i in indices:
             # iteratively calculate new updates
@@ -84,20 +87,34 @@ class HopfieldNetwork:
 
     def recall(self, Xd: np.ndarray,
                mode: Literal['asynchronous', 'synchronous'] = 'asynchronous',
+               random_units: bool = False,
                convergence_threshold: int = 5,
-               max_iter: Optional[int] = None) -> np.ndarray:
+               max_iter: Optional[int] = None,
+               callback: Callable[[int, int, np.ndarray], Any] =
+               lambda epoch, p_index, pattern: None,
+               callback_interval: int = 100) -> np.ndarray:
         """
         Tries to update a set of given input patterns to match the stored 
         patterns in this network.
-        
+
         :param Xd: Matrix of input patterns to use as inputs to the recall.
         :param mode: 'asynchronous' or 'synchronous'. Asynchronous recall
         updates every unit in the patters one at the time, synchronous recall
         updates the whole pattern at once.
+        :param random_units: When performing asynchronous recall, update
+        units in random order.
         :param convergence_threshold: Number of iterations the output pattern
         needs to be constant for this method to consider it to have converged.
         :param max_iter: Maximum iterations before this method gives up on
         finding a convergence.
+        :param callback: A function to be executed a certain intervals in the
+        recall procedure. This function should take three parameters: an int
+        representing the current iteration, an int representing the index of
+        the current pattern, and a np.ndarray containing the current state of
+        the pattern. This function will be executed for each pattern in the
+        input separately.
+        :param callback_interval: Interval in iterations between calls to the
+        callback function.
         :return: A matrix of the same dimensions as the input matrix
         containing the recalled patterns.
         """
@@ -106,7 +123,8 @@ class HopfieldNetwork:
             if max_iter is None else max_iter
 
         if mode == 'asynchronous':
-            recall_fn = self._asynchronous_recall
+            recall_fn = functools.partial(self._asynchronous_recall,
+                                          random_units=random_units)
         elif mode == 'synchronous':
             recall_fn = self._synchronous_recall
         else:
@@ -120,6 +138,9 @@ class HopfieldNetwork:
             iterations = 0
 
             while True:
+                if iterations % callback_interval == 0:
+                    callback(iterations, i, new_y)
+
                 prev_y = new_y.copy()
                 new_y = recall_fn(prev_y)
 
