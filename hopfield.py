@@ -23,6 +23,7 @@ class HopfieldNetwork:
 
     def train(self, X: np.ndarray,
               self_connections: bool = False,
+              sparse: bool = False,
               convergence_threshold: int = 5) -> None:
         """
         Trains the network on a set of input patters.
@@ -49,14 +50,21 @@ class HopfieldNetwork:
         X = X.copy()
         attr_dims = X.shape[1]
 
+        # check values in matrices match
+        assert np.all(np.unique(X) == [0, 1]) \
+            if sparse else np.all(np.unique(X) == [-1, 1])
+
         self._w = np.zeros(shape=(attr_dims, attr_dims))
         convergence_count = 0
         epochs = 0
 
+        # for sparse patterns
+        rho = np.sum(X) / X.size if sparse else 0
+
         while True:
             previous_w = self._w.copy()
             for pattern in X:
-                w = np.outer(pattern.T, pattern)
+                w = np.outer(pattern.T - rho, pattern - rho)
                 # np.fill_diagonal(w, 0)
                 self._w += w
 
@@ -73,15 +81,22 @@ class HopfieldNetwork:
 
     def _synchronous_recall(self,
                             y: np.ndarray,
+                            sparse: bool,
+                            theta: float,
                             callback: Callable[[int, np.ndarray], Any]) \
             -> np.ndarray:
-        new_y = np.dot(self._w, y)
+        new_y = np.dot(self._w, y) - theta
         new_y[new_y >= 0] = 1  # x >= 0 -> 1
         new_y[new_y < 0] = -1  # x < 0 -> -1
+
+        new_y = 0.5 + (0.5 * new_y) if sparse else new_y
+
         callback(-1, new_y)
         return new_y
 
     def _asynchronous_recall(self, y: np.ndarray,
+                             sparse: bool,
+                             theta: float,
                              random_units: bool,
                              callback: Callable[[int, np.ndarray], Any]) \
             -> np.ndarray:
@@ -91,8 +106,9 @@ class HopfieldNetwork:
 
         for i in indices:
             # iteratively calculate new updates
-            new_i = np.sum(np.multiply(self._w[i, :], new_y))
-            new_y[i] = -1 if new_i < 0 else 1
+            new_i = np.sum(np.multiply(self._w[i, :], new_y)) - theta
+            new_i = -1 if new_i < 0 else 1
+            new_y[i] = 0.5 + (0.5 * new_i) if sparse else new_i
             callback(i, new_y)
 
         return new_y
@@ -102,6 +118,8 @@ class HopfieldNetwork:
                random_units: bool = False,
                convergence_threshold: int = 5,
                max_iter: Optional[int] = None,
+               sparse: bool = False,
+               sparse_theta: float = 0.1,
                callback: Callable[[int, int, int, np.ndarray], Any] =
                lambda epoch, p_index, unit, pattern: None) -> np.ndarray:
         """
@@ -118,6 +136,8 @@ class HopfieldNetwork:
         needs to be constant for this method to consider it to have converged.
         :param max_iter: Maximum iterations before this method gives up on
         finding a convergence.
+        :param sparse: Recall in sparse mode.
+        :param sparse_theta: Threshold to use in sparse mode. Ignored otherwise.
         :param callback: A function to be executed periodically during the
         recall procedure. This function should take four parameters: an int
         representing the current epoch, an int representing the index of the 
@@ -131,15 +151,22 @@ class HopfieldNetwork:
         containing the recalled patterns.
         """
 
+        # check values in matrices match
+        assert np.all(np.unique(X) == [0, 1]) \
+            if sparse else np.all(np.unique(X) == [-1, 1])
+
         max_iter = 10 * np.log(self._w.shape[0]) \
             if max_iter is None else max_iter
 
+        theta = sparse_theta if sparse else 0
+
         if mode == 'asynchronous':
             def recall_fn(pattern, cb):
-                return self._asynchronous_recall(pattern, random_units, cb)
+                return self._asynchronous_recall(pattern, sparse, theta,
+                                                 random_units, cb)
         elif mode == 'synchronous':
             def recall_fn(pattern, cb):
-                return self._synchronous_recall(pattern, cb)
+                return self._synchronous_recall(pattern, sparse, theta, cb)
         else:
             raise RuntimeError(f'Invalid mode: {mode}!')
 
