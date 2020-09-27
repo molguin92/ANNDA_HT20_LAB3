@@ -90,7 +90,8 @@ class HopfieldNetwork:
                random_units: bool = False,
                convergence_threshold: int = 5,
                max_iter: Optional[int] = None,
-               callback: Callable[[int, np.ndarray], Any] = lambda e, p: None,
+               callback: Callable[[int, int, np.ndarray], Any] =
+               lambda epoch, p_index, pattern: None,
                callback_interval: int = 100) -> np.ndarray:
         """
         Tries to update a set of given input patterns to match the stored 
@@ -107,10 +108,11 @@ class HopfieldNetwork:
         :param max_iter: Maximum iterations before this method gives up on
         finding a convergence.
         :param callback: A function to be executed a certain intervals in the
-        recall procedure. This function should take two parameters: and int
-        representing the current iteration and a np.ndarray containing the
-        current state of the pattern. This function will be executed for each
-        pattern in the input separately.
+        recall procedure. This function should take three parameters: an int
+        representing the current iteration, an int representing the index of
+        the current pattern, and a np.ndarray containing the current state of
+        the pattern. This function will be executed for each pattern in the
+        input separately.
         :param callback_interval: Interval in iterations between calls to the
         callback function.
         :return: A matrix of the same dimensions as the input matrix
@@ -137,7 +139,7 @@ class HopfieldNetwork:
 
             while True:
                 if iterations % callback_interval == 0:
-                    callback(iterations, new_y)
+                    callback(iterations, i, new_y)
 
                 prev_y = new_y.copy()
                 new_y = recall_fn(prev_y)
