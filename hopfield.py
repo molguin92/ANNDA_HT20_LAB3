@@ -152,8 +152,8 @@ class HopfieldNetwork:
         """
 
         # check values in matrices match
-        assert np.all(np.unique(X) == [0, 1]) \
-            if sparse else np.all(np.unique(X) == [-1, 1])
+        assert np.all(np.unique(Xd) == [0, 1]) \
+            if sparse else np.all(np.unique(Xd) == [-1, 1])
 
         max_iter = 10 * np.log(self._w.shape[0]) \
             if max_iter is None else max_iter
