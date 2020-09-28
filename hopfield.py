@@ -1,6 +1,6 @@
-import itertools
 import warnings
-from typing import Any, Callable, Literal, Optional
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Literal, Optional, Union
 
 import numpy as np
 from numpy.random import default_rng
@@ -23,8 +23,7 @@ class HopfieldNetwork:
 
     def train(self, X: np.ndarray,
               self_connections: bool = False,
-              sparse: bool = False,
-              convergence_threshold: int = 5) -> None:
+              sparse: bool = False) -> None:
         """
         Trains the network on a set of input patters.
 
@@ -64,24 +63,12 @@ class HopfieldNetwork:
         # for sparse patterns
         rho = np.sum(X) / X.size if sparse else 0
 
-        while True:
-            previous_w = self._w.copy()
-            for pattern in X:
-                w = np.outer(pattern.T - rho, pattern - rho)  # / attr_dims
-                # np.fill_diagonal(w, 0)
-                self._w += w
+        for pattern in X:
+            self._w += np.outer(pattern.T - rho, pattern - rho)
 
-            if not self_connections:
-                np.fill_diagonal(self._w, 0)
-            # self._w = self._w / attr_dims
-            self._w /= attr_dims
-            epochs += 1
-
-            convergence_count = convergence_count + 1 \
-                if np.all(np.isclose(self._w, previous_w)) else 0
-
-            if convergence_count >= convergence_threshold:
-                break
+        self._w /= attr_dims
+        if not self_connections:
+            np.fill_diagonal(self._w, 0)
 
     def _synchronous_recall(self,
                             y: np.ndarray,
@@ -221,6 +208,96 @@ class HopfieldNetwork:
         return energy
 
 
+def signum(val: Union[float, int]) -> int:
+    return -1 if val < 0 else 1
+
+
+class BaseHopfieldNetwork(ABC):
+    def __init__(self):
+        super(BaseHopfieldNetwork, self).__init__()
+        self._w = np.empty(0)
+
+    def train(self,
+              X: np.ndarray,
+              self_conns: bool = False):
+
+        self._w = np.zeros(shape=(X.shape[1], X.shape[1]))
+
+        for pattern in X:
+            self._w += np.outer(pattern.T, pattern)
+
+        self._w /= self._w.shape[1]
+        if not self_conns:
+            np.fill_diagonal(self._w, 0)
+
+    @abstractmethod
+    def update_step(self, units: np.ndarray) -> np.ndarray:
+        pass
+
+    def recall(self,
+               X: np.ndarray,
+               convergence_threshold: int = 3,
+               max_iters: int = None) -> np.ndarray:
+
+        max_iter = 10 * np.log(self._w.shape[0]) \
+            if max_iters is None else max_iters
+
+        recalled = np.empty(X.shape)
+        conv_count = 0
+        for i, pattern in enumerate(X):
+            new_state = pattern.copy()
+            iterations = 0
+
+            while True:
+                iterations += 1
+
+                prev_state = new_state.copy()
+                new_state = self.update_step(prev_state)
+
+                if np.all(prev_state == new_state):
+                    conv_count += 1
+                    if conv_count >= convergence_threshold:
+                        break
+                else:
+                    conv_count = 0
+
+                if iterations >= max_iter:
+                    warnings.warn(f'Pattern did not converge after '
+                                  f'the maximum number of iterations ('
+                                  f'{int(np.floor(max_iter)):d})!',
+                                  ConvergenceWarning)
+                    break
+
+            recalled[i, :] = new_state
+
+        return recalled
+
+    def energy(self, pattern: np.ndarray) -> float:
+        return -1 * np.sum(np.multiply(self._w, np.outer(pattern, pattern)))
+
+
+class AsynchronousHopfieldNetwork(BaseHopfieldNetwork):
+    def __init__(self, random_units: bool = False):
+        super(AsynchronousHopfieldNetwork, self).__init__()
+        self._random_units = random_units
+
+    def update_step(self, units: np.ndarray) -> np.ndarray:
+        units = units.copy()
+        update_order = rand_gen.permutation(units.size) \
+            if self._random_units else np.arange(units.size)
+
+        for idx in update_order:
+            units[idx] = signum(np.sum(np.multiply(self._w[idx, :],
+                                                   units)).item())
+
+        return units
+
+
+class SynchronousHopfieldNetwork(BaseHopfieldNetwork):
+    def update_step(self, units: np.ndarray) -> np.ndarray:
+        return np.array(list(map(signum, np.dot(self._w, units))))
+
+
 if __name__ == '__main__':
     # note that x3 is not orthogonal with respect to either x1 or x2,
     # and thus causes crosstalk in the network!
@@ -234,15 +311,15 @@ if __name__ == '__main__':
 
     X = np.array([x1, x2, x3])
 
-    for (i, x), (j, y) in itertools.product(enumerate(X), enumerate(X)):
-        if i == j:
-            continue
-        elif not np.isclose(np.dot(x, y), 0):
-            print(f'x{i + 1} and x{j + 1} are not orthogonal!')
+    # for (i, x), (j, y) in itertools.product(enumerate(X), enumerate(X)):
+    #     if i == j:
+    #         continue
+    #     elif not np.isclose(np.dot(x, y), 0):
+    #         print(f'x{i + 1} and x{j + 1} are not orthogonal!')
 
     # make sure the patterns are fixed points
-    nn = HopfieldNetwork()
-    nn.train(X)
+    nn = AsynchronousHopfieldNetwork()
+    nn.train(X, self_conns=False)
 
     assert np.all(nn.recall(X) == X)
 
@@ -252,7 +329,9 @@ if __name__ == '__main__':
     Xd = np.array([x1d, x2d, x3d])
 
     Xp = nn.recall(Xd)
+    #
+    print(nn.energy(np.array(x1)))
 
-    print(nn._energy(x2d))
-
-    print(Xp == X)
+    print(X)
+    print(Xp)
+    print(X == Xp)

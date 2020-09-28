@@ -13,6 +13,9 @@ from hopfield import HopfieldNetwork
 
 rand_gen = default_rng()
 
+def gen_sparse_patterns(xdims: int,
+                        activity: float)
+
 
 # sparse patterns
 def generate_sparse_patterns(xdims: int,
