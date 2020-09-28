@@ -51,12 +51,15 @@ class HopfieldNetwork:
         attr_dims = X.shape[1]
 
         # check values in matrices match
-        assert np.all(np.unique(X) == [0, 1]) \
-            if sparse else np.all(np.unique(X) == [-1, 1])
+        elems = [0, 1] if sparse else [-1, 1]
+        assert np.all(np.isin(X, elems))
 
         self._w = np.zeros(shape=(attr_dims, attr_dims))
         convergence_count = 0
         epochs = 0
+
+        # sparse algorithm only seems to work with self-connections
+        self_connections = True if sparse else self_connections
 
         # for sparse patterns
         rho = np.sum(X) / X.size if sparse else 0
@@ -70,7 +73,7 @@ class HopfieldNetwork:
 
             if not self_connections:
                 np.fill_diagonal(self._w, 0)
-            self._w /= attr_dims
+            # self._w /= attr_dims
             epochs += 1
 
             convergence_count = convergence_count + 1 \
@@ -89,7 +92,7 @@ class HopfieldNetwork:
         new_y[new_y >= 0] = 1  # x >= 0 -> 1
         new_y[new_y < 0] = -1  # x < 0 -> -1
 
-        new_y = 0.5 + (0.5 * new_y) if sparse else new_y
+        new_y = np.rint(0.5 + (0.5 * new_y)) if sparse else new_y
 
         callback(-1, new_y)
         return new_y
@@ -108,9 +111,8 @@ class HopfieldNetwork:
             # iteratively calculate new updates
             new_i = np.sum(np.multiply(self._w[i, :], new_y)) - theta
             new_i = -1 if new_i < 0 else 1
-            new_y[i] = 0.5 + (0.5 * new_i) if sparse else new_i
+            new_y[i] = np.rint(0.5 + (0.5 * new_i)) if sparse else new_i
             callback(i, new_y)
-
         return new_y
 
     def recall(self, Xd: np.ndarray,
@@ -152,8 +154,8 @@ class HopfieldNetwork:
         """
 
         # check values in matrices match
-        assert np.all(np.unique(Xd) == [0, 1]) \
-            if sparse else np.all(np.unique(Xd) == [-1, 1])
+        elems = [0, 1] if sparse else [-1, 1]
+        assert np.all(np.isin(Xd, elems))
 
         max_iter = 10 * np.log(self._w.shape[0]) \
             if max_iter is None else max_iter

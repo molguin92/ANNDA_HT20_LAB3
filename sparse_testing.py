@@ -56,10 +56,10 @@ def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
     X = generate_sparse_patterns(xdims, activity)
 
     with multiprocess.Pool() as pool:
-        for theta in np.power(10.0, np.arange(-1, 6)):
+        for theta in np.power(10.0, np.arange(-1, 5)):
             # generate slices of patterns
             n_patterns = list(range(1, X.shape[0]))
-            patterns = [X[:i, :] for i in n_patterns]
+            patterns = [X[:i, :].copy() for i in n_patterns]
 
             mses = tqdm(
                 pool.imap(_mse_recall_sparse_hopfield,
