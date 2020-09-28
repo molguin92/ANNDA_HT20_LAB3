@@ -52,12 +52,14 @@ def _error_recall_sparse_hopfield(arg_tuple: Tuple) -> float:
     return error
 
 
-def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
+def test_sparse(activity: float, xdims: int = 100) -> pd.DataFrame:
     results = []
-    X = generate_sparse_patterns(xdims, activity)
+    max_pats = int(np.floor(1.5 * xdims * 0.138))
+    X = generate_sparse_patterns(xdims, activity, max_patterns=max_pats)
 
     with multiprocess.Pool() as pool:
-        for theta in np.power(10.0, np.arange(-5, 1)):
+        # for theta in np.power(10.0, np.arange(-5, 1)):
+        for theta in np.power(10.0, np.linspace(-3, 0, 7)):
             # generate slices of patterns
             n_patterns = list(range(1, X.shape[0]))
 
@@ -79,9 +81,9 @@ def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
             results.extend(
                 [
                     {
-                        'activity'  : activity,
-                        'theta'     : theta,
-                        'n_patterns': i,
+                        'activity'    : activity,
+                        'theta'       : theta,
+                        'n_patterns'  : i,
                         'recall_error': error
                     } for i, error in zip(n_patterns, errors)
                 ]
@@ -95,13 +97,13 @@ if __name__ == '__main__':
     pd.concat([test_sparse(a) for a in activities]).to_csv('sparse_tests.csv',
                                                            index=False)
 
-    # X = generate_sparse_patterns(10, activity=0.1, max_patterns=5)
+    # X = generate_sparse_patterns(100, activity=0.1, max_patterns=10)
     # X_nz = np.flatnonzero(X)
     #
     # nn = HopfieldNetwork()
     # nn.train(X, sparse=True)
     #
-    # Xp = nn.recall(X, sparse=True, sparse_theta=0.001)
+    # Xp = nn.recall(X, sparse=True, sparse_theta=0.035)
     # Xp_nz = np.flatnonzero(Xp)
     #
     # print(X == Xp)

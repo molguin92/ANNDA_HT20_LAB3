@@ -59,7 +59,7 @@ class HopfieldNetwork:
         epochs = 0
 
         # sparse algorithm only seems to work with self-connections
-        self_connections = True if sparse else self_connections
+        # self_connections = True if sparse else self_connections
 
         # for sparse patterns
         rho = np.sum(X) / X.size if sparse else 0
@@ -119,7 +119,7 @@ class HopfieldNetwork:
     def recall(self, Xd: np.ndarray,
                mode: Literal['asynchronous', 'synchronous'] = 'asynchronous',
                random_units: bool = False,
-               convergence_threshold: int = 5,
+               convergence_threshold: int = 1,
                max_iter: Optional[int] = None,
                sparse: bool = False,
                sparse_theta: float = 0.1,
