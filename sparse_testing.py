@@ -7,7 +7,6 @@ import pandas as pd
 import scipy.sparse
 import scipy.special
 from numpy.random import default_rng
-from sklearn.metrics import mean_squared_error
 from tqdm import tqdm
 
 from hopfield import HopfieldNetwork
@@ -41,14 +40,16 @@ def generate_sparse_patterns(xdims: int,
     return X_unique
 
 
-def _mse_recall_sparse_hopfield(arg_tuple: Tuple) -> float:
+def _error_recall_sparse_hopfield(arg_tuple: Tuple) -> float:
     X, theta = arg_tuple
     nn = HopfieldNetwork()
     nn.train(X, sparse=True)
 
     Xp = nn.recall(X, sparse=True, sparse_theta=theta)
 
-    return mean_squared_error(X, Xp)
+    # fraction of patters which were not remembered
+    error = np.sum(np.any(X != Xp, axis=1)) / Xp.shape[0]
+    return error
 
 
 def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
@@ -56,13 +57,17 @@ def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
     X = generate_sparse_patterns(xdims, activity)
 
     with multiprocess.Pool() as pool:
-        for theta in np.power(10.0, np.arange(-1, 5)):
+        for theta in np.power(10.0, np.arange(-5, 1)):
             # generate slices of patterns
             n_patterns = list(range(1, X.shape[0]))
-            patterns = [X[:i, :].copy() for i in n_patterns]
 
-            mses = tqdm(
-                pool.imap(_mse_recall_sparse_hopfield,
+            patterns = [
+                X[rand_gen.choice(np.arange(X.shape[0]), size=i), :].copy()
+                for i in n_patterns
+            ]
+
+            errors = tqdm(
+                pool.imap(_error_recall_sparse_hopfield,
                           zip(patterns, itertools.repeat(theta))),
                 total=len(patterns),
                 desc=f'Testing sparse recall | '
@@ -77,8 +82,8 @@ def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
                         'activity'  : activity,
                         'theta'     : theta,
                         'n_patterns': i,
-                        'recall_mse': error
-                    } for i, error in zip(n_patterns, mses)
+                        'recall_error': error
+                    } for i, error in zip(n_patterns, errors)
                 ]
             )
 
@@ -89,3 +94,16 @@ if __name__ == '__main__':
     activities = [0.01, 0.05, 0.1]
     pd.concat([test_sparse(a) for a in activities]).to_csv('sparse_tests.csv',
                                                            index=False)
+
+    # X = generate_sparse_patterns(10, activity=0.1, max_patterns=5)
+    # X_nz = np.flatnonzero(X)
+    #
+    # nn = HopfieldNetwork()
+    # nn.train(X, sparse=True)
+    #
+    # Xp = nn.recall(X, sparse=True, sparse_theta=0.001)
+    # Xp_nz = np.flatnonzero(Xp)
+    #
+    # print(X == Xp)
+    # print(np.any(X != Xp, axis=1))
+    # print(np.sum(np.any(X != Xp, axis=1)) / Xp.shape[0])

@@ -67,13 +67,14 @@ class HopfieldNetwork:
         while True:
             previous_w = self._w.copy()
             for pattern in X:
-                w = np.outer(pattern.T - rho, pattern - rho)
+                w = np.outer(pattern.T - rho, pattern - rho)  # / attr_dims
                 # np.fill_diagonal(w, 0)
                 self._w += w
 
             if not self_connections:
                 np.fill_diagonal(self._w, 0)
-            # self._w /= attr_dims
+            # self._w = self._w / attr_dims
+            self._w /= attr_dims
             epochs += 1
 
             convergence_count = convergence_count + 1 \
