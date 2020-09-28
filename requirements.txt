@@ -6,3 +6,6 @@ numpy
 matplotlib
 seaborn
 pandas
+scikit-learn
+multiprocess
+tqdm
