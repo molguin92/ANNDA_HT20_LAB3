@@ -9,3 +9,4 @@ pandas
 scikit-learn
 multiprocess
 tqdm
+num2tex

@@ -13,8 +13,62 @@ from hopfield import HopfieldNetwork
 
 rand_gen = default_rng()
 
+
 def gen_sparse_patterns(xdims: int,
-                        activity: float)
+                        activity: float,
+                        ortho_threshold: float = 0.2) -> np.ndarray:
+    # generates all possible close-to orthogonal vectors with the desired
+    # activity factor
+    n_ones = int(np.rint(xdims * activity))
+    max_overlap = int(np.rint(n_ones * ortho_threshold))
+    patterns = []
+
+    indices = set(range(xdims))
+    while n_ones > 0:
+        while len(indices) >= n_ones:
+            # grab random indices
+            while True:
+                try:
+                    rand_idx = rand_gen.choice(
+                        list(indices),
+                        size=int(
+                            np.rint(rand_gen.normal(loc=n_ones,
+                                                    scale=0.1 * n_ones))),
+                        replace=False)
+                    break
+                except ValueError:
+                    pass
+            new_pattern = np.zeros(xdims)
+            new_pattern[rand_idx] = 1
+
+            indices = indices - set(rand_idx)
+
+            patterns.append(new_pattern)
+
+        n_ones -= 1
+
+    indices = set(range(xdims))
+    len_patterns = len(patterns)
+    for i in range(len_patterns):
+        # generate new patterns by flipping some bits
+        old_pattern = patterns[i]
+
+        try:
+            idx_to_flip = rand_gen.choice(list(indices),
+                                          size=max_overlap,
+                                          replace=False)
+        except ValueError:
+            idx_to_flip = list(indices)
+
+        new_pattern = old_pattern.copy()
+        new_pattern[idx_to_flip] = list(map(lambda x: 0 if x == 1 else 1,
+                                            new_pattern[idx_to_flip]))
+
+        indices = indices - set(idx_to_flip)
+        patterns.append(new_pattern)
+
+    patterns = np.array(patterns)
+    return patterns
 
 
 # sparse patterns
@@ -55,10 +109,24 @@ def _error_recall_sparse_hopfield(arg_tuple: Tuple) -> float:
     return error
 
 
-def test_sparse(activity: float, xdims: int = 100) -> pd.DataFrame:
+def test_sparse(activity: float, xdims: int = 1024) -> pd.DataFrame:
     results = []
-    max_pats = int(np.floor(1.5 * xdims * 0.138))
-    X = generate_sparse_patterns(xdims, activity, max_patterns=max_pats)
+    # max_pats = int(np.floor(1.5 * xdims * 0.138))
+    # X = generate_sparse_patterns(xdims, activity, max_patterns=max_pats)
+    X = gen_sparse_patterns(xdims, activity)
+    while np.sum(X) / X.size - activity > 0.005:
+        X = gen_sparse_patterns(xdims, activity)
+
+    X = np.unique(X[:20], axis=0)
+
+    while X.shape[0] < 100:
+        idx = rand_gen.choice(xdims)
+        old_p = rand_gen.choice(X, axis=0)
+
+        new_p = old_p.copy()
+        new_p[idx] = 0 if new_p[idx] > 0 else 1
+
+        X = np.unique(np.append(X, np.atleast_2d(new_p), axis=0), axis=0)
 
     with multiprocess.Pool() as pool:
         # for theta in np.power(10.0, np.arange(-5, 1)):
